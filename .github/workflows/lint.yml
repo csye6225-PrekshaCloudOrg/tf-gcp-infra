@@ -2,7 +2,7 @@ name: Code Formatting
 on:
   pull_request:
     branches:
-      - assignment3
+      - main
 jobs:
   build:
     runs-on: ubuntu-latest
