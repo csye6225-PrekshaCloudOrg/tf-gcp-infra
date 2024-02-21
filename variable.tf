@@ -97,3 +97,9 @@ variable "initialize_params_size" {
   type        = string
   default     = "100"
 }
+
+variable "allowed_ports" {
+  description = "List of allowed ports"
+  type        = list(string)
+  default     = ["80", "3000"]
+}

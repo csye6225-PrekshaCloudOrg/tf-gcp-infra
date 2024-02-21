@@ -47,7 +47,7 @@ resource "google_compute_firewall" "allow_web_traffic" {
 
   allow {
     protocol = "tcp"
-    ports    = ["22", "80", "3000"]
+    ports    = var.allowed_ports
   }
   source_ranges = ["0.0.0.0/0"]
 }
@@ -72,4 +72,5 @@ resource "google_compute_instance" "my_instance" {
     access_config {
     }
   }
+  depends_on = [google_compute_subnetwork.webapp]
 }
