@@ -103,3 +103,27 @@ variable "allowed_ports" {
   type        = list(string)
   default     = ["80", "3000"]
 }
+
+variable "deny_priority" {
+  description = "Priority for the deny-all-traffic firewall rule"
+  type        = number
+  default     = 1200
+}
+
+variable "allow_priority" {
+  description = "Priority for the deny-all-traffic firewall rule"
+  type        = number
+  default     = 1000
+}
+
+variable "allow_protocol" {
+  description = "allow protocol"
+  type        = string
+  default     = "tcp"
+}
+
+variable "deny_protocol" {
+  description = "deny_protocol"
+  type        = string
+  default     = "all"
+}
