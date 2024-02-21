@@ -8,6 +8,24 @@ variable "region" {
   type        = string
 }
 
+variable "routing_mode"{
+  description = "routing_mode"
+  type = string
+  default = "REGIONAL" 
+}
+
+variable "auto_create_subnetworks" {
+  description = "auto_create_subnetworks"
+  type = bool
+  default = false 
+}
+
+variable "zone" {
+  description = "Region"
+  type        = string
+}
+
+
 variable "vpc_count" {
   description = "Count of the vpc"
   type        = number
@@ -40,4 +58,42 @@ variable "subnet_webapp_name" {
 variable "subnet_db_name" {
   description = "List of CIDR range"
   type        = list(string)
+}
+
+variable "firewall_name" {
+  description = "Name of the firewall"
+  type        = list(string)
+}
+
+variable "webapp_port" {
+  description = "The port to which the webapp is listening to"
+  type        = number
+
+}
+
+variable "my_instance_name" {
+  description = "Instance name"
+  type        = string
+}
+
+variable "machine_type" {
+  description = "machine type"
+  type        = string
+}
+
+variable "initialize_params_type" {
+  description = "Packe image id"
+  type        = string
+  default     = "pd-balanced"
+}
+
+variable "packer_image" {
+  description = "Packe image id"
+  type        = string
+}
+
+variable "initialize_params_size" {
+  description = "Count of the vpc"
+  type        = string
+  default     = "100"
 }
