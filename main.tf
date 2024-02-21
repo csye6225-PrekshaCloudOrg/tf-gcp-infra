@@ -38,7 +38,7 @@ resource "google_compute_route" "webapp_route" {
 # Define firewall rule
 resource "google_compute_firewall" "allow_web_traffic" {
   count       = var.vpc_count
-  name        = "allow-web-traffic"
+  name        = "allow-web-traffic-${count.index}"
   network     = google_compute_network.vpcnetwork[count.index].self_link
   target_tags = ["webapp"]
   allow {
@@ -46,10 +46,26 @@ resource "google_compute_firewall" "allow_web_traffic" {
   }
 
   allow {
-    protocol = "tcp"
+    protocol = var.allow_protocol
     ports    = var.allowed_ports
   }
   source_ranges = ["0.0.0.0/0"]
+  priority = var.allow_priority
+}
+
+resource "google_compute_firewall" "deny_all_traffic" {
+  count       = var.vpc_count
+  name        = "deny-all-traffic-${count.index}"
+  network     = google_compute_network.vpcnetwork[count.index].self_link
+  target_tags = ["webapp"]
+
+  deny {
+    protocol = var.deny_protocol
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+
+  priority = var.deny_priority
 }
 
 # Define Compute Engine instance
