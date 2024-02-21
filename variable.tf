@@ -73,7 +73,7 @@ variable "webapp_port" {
 
 variable "my_instance_name" {
   description = "Instance name"
-  type        = string
+  type        = list(string)
 }
 
 variable "machine_type" {

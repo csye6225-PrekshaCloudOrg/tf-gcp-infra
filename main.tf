@@ -55,7 +55,7 @@ resource "google_compute_firewall" "allow_web_traffic" {
 # Define Compute Engine instance
 resource "google_compute_instance" "my_instance" {
   count        = var.vpc_count
-  name         = var.my_instance_name
+  name         = var.my_instance_name[count.index]
   machine_type = var.machine_type
   zone         = var.zone
   tags         = ["webapp"]
