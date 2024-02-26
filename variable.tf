@@ -8,16 +8,16 @@ variable "region" {
   type        = string
 }
 
-variable "routing_mode"{
+variable "routing_mode" {
   description = "routing_mode"
-  type = string
-  default = "REGIONAL" 
+  type        = string
+  default     = "REGIONAL"
 }
 
 variable "auto_create_subnetworks" {
   description = "auto_create_subnetworks"
-  type = bool
-  default = false 
+  type        = bool
+  default     = false
 }
 
 variable "zone" {
@@ -126,4 +126,85 @@ variable "deny_protocol" {
   description = "deny_protocol"
   type        = string
   default     = "all"
+}
+
+variable "database_instance_name" {
+  description = "Name of the Cloud SQL database instance"
+  type        = list(string)
+  default     = ["my-cloud-sql-instance"]
+}
+
+// Cloud SQL variables
+
+variable "private_ip_address_purpose" {
+  description = "Purpose of the private IP address"
+  type        = string
+  default     = "VPC_PEERING"
+}
+
+variable "private_ip_address_type" {
+  description = "Type of the private IP address"
+  type        = string
+  default     = "INTERNAL"
+}
+
+variable "private_ip_address_prefix_length" {
+  description = "Prefix length of the private IP address"
+  type        = number
+  default     = 16
+}
+
+variable "service_name" {
+  description = "Name of the service"
+  type        = string
+  default     = "servicenetworking.googleapis.com"
+}
+
+variable "database_version" {
+  description = "Database version for the SQL database instance"
+  type        = string
+  default     = "POSTGRES_15"
+}
+
+variable "tier" {
+  description = "Tier for the SQL database instance"
+  type        = string
+  default     = "db-f1-micro"
+}
+
+variable "availability_type" {
+  description = "Availability type for the SQL database instance"
+  type        = string
+  default     = "REGIONAL"
+}
+
+variable "disk_type" {
+  description = "Disk type for the SQL database instance"
+  type        = string
+  default     = "pd-ssd"
+}
+
+variable "disk_size" {
+  description = "Disk size for the SQL database instance"
+  default     = "100"
+}
+
+variable "ipv4_enabled" {
+  description = "Enable IPv4 for the SQL database instance"
+  type        = bool
+  default     = false
+}
+
+// Database reletaed variables 
+
+variable "database_name" {
+  description = "Name of the SQL database"
+  type        = string
+  default     = "webapp"
+}
+
+variable "user_name" {
+  description = "Name of the SQL user"
+  type        = string
+  default     = "webapp"
 }
