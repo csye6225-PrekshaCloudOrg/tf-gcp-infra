@@ -127,7 +127,7 @@ resource "google_sql_user" "users" {
   count    = var.vpc_count
   name     = var.user_name
   instance = google_sql_database_instance.instance[count.index].name
-  password = "password"
+  password = random_password.password.result
 }
 
 
