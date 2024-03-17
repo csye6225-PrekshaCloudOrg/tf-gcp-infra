@@ -127,8 +127,33 @@ resource "google_sql_user" "users" {
   count    = var.vpc_count
   name     = var.user_name
   instance = google_sql_database_instance.instance[count.index].name
-  password = random_password.password.result
+  password = "password"
 }
+
+resource "google_service_account" "service_account" {
+  account_id   = "csye-preksha"
+  display_name = "csye-preksha"
+}
+
+
+resource "google_project_iam_binding" "metricWriter" {
+  project = var.project
+  role    = "roles/monitoring.metricWriter"
+
+  members = [
+    "serviceAccount:${google_service_account.service_account.email}",
+  ]
+}
+
+resource "google_project_iam_binding" "Logging_Admin" {
+  project = var.project
+  role    = "roles/logging.admin"
+
+  members = [
+    "serviceAccount:${google_service_account.service_account.email}",
+  ]
+}
+
 
 
 # Define Compute Engine instance
@@ -138,7 +163,10 @@ resource "google_compute_instance" "my_instance" {
   machine_type = var.machine_type
   zone         = var.zone
   tags         = ["webapp"]
-
+  service_account {
+    email  = google_service_account.service_account.email
+    scopes = ["cloud-platform"]
+  }
   metadata_startup_script = <<-EOF
     #!/bin/bash
     # Retrieve the SQL instance IP address and store it in .env
@@ -167,5 +195,17 @@ resource "google_compute_instance" "my_instance" {
     access_config {}
   }
 
-  depends_on = [google_compute_subnetwork.webapp, google_sql_database_instance.instance]
+  depends_on = [google_compute_subnetwork.webapp, google_sql_database_instance.instance, google_service_account.service_account]
+}
+
+
+resource "google_dns_record_set" "frontend" {
+  count        = var.vpc_count
+  name = "preksha.me."
+  type = "A"
+  ttl  = 21600
+  managed_zone = "webapp-zone"
+  rrdatas      = [google_compute_instance.my_instance[count.index].network_interface[0].access_config[0].nat_ip]
+  depends_on = [google_compute_instance.my_instance]
+
 }
