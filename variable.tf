@@ -208,3 +208,45 @@ variable "user_name" {
   type        = string
   default     = "webapp"
 }
+
+variable "domain_name" {
+  description = "Name of the domain"
+  type        = string
+  default     = "preksha.me."
+}
+
+variable "dns_type" {
+  description = "Name of the domain"
+  type        = string
+  default     = "A"
+}
+
+variable "dns_ttl" {
+  description = "dns ttl"
+  type        = number
+  default     = 21600
+}
+
+variable "managed_zone" {
+  description = "managed_zone"
+  type        = string
+  default     = "webapp-zone"
+}
+
+variable "metricWriter" {
+  description = "metricWriter"
+  type        = string
+  default     = "roles/monitoring.metricWriter"
+}
+
+variable "Logging_Admin" {
+  description = "Logging_Admin"
+  type        = string
+  default     = "roles/logging.admin"
+}
+
+variable "cloud_platform_scope" {
+  description = "The scope for the service account, such as 'cloud-platform'."
+  type        = string
+  default     = "cloud-platform"
+}

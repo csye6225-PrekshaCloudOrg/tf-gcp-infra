@@ -138,7 +138,7 @@ resource "google_service_account" "service_account" {
 
 resource "google_project_iam_binding" "metricWriter" {
   project = var.project
-  role    = "roles/monitoring.metricWriter"
+  role    = var.metricWriter
 
   members = [
     "serviceAccount:${google_service_account.service_account.email}",
@@ -147,7 +147,7 @@ resource "google_project_iam_binding" "metricWriter" {
 
 resource "google_project_iam_binding" "Logging_Admin" {
   project = var.project
-  role    = "roles/logging.admin"
+  role    = var.Logging_Admin
 
   members = [
     "serviceAccount:${google_service_account.service_account.email}",
@@ -165,7 +165,7 @@ resource "google_compute_instance" "my_instance" {
   tags         = ["webapp"]
   service_account {
     email  = google_service_account.service_account.email
-    scopes = ["cloud-platform"]
+    scopes = [var.cloud_platform_scope]
   }
   metadata_startup_script = <<-EOF
     #!/bin/bash
@@ -201,11 +201,11 @@ resource "google_compute_instance" "my_instance" {
 
 resource "google_dns_record_set" "frontend" {
   count        = var.vpc_count
-  name = "preksha.me."
-  type = "A"
-  ttl  = 21600
-  managed_zone = "webapp-zone"
+  name         = var.domain_name
+  type         = var.dns_type
+  ttl          = var.dns_ttl
+  managed_zone = var.managed_zone
   rrdatas      = [google_compute_instance.my_instance[count.index].network_interface[0].access_config[0].nat_ip]
-  depends_on = [google_compute_instance.my_instance]
+  depends_on   = [google_compute_instance.my_instance]
 
 }
