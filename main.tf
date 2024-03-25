@@ -113,7 +113,7 @@ resource "google_sql_database_instance" "instance" {
 resource "random_password" "password" {
   length           = 16
   special          = true
-  override_special = "!#$%&*()-_=+[]{}<>:?"
+  override_special = "!"
 }
 
 resource "google_sql_database" "database" {
@@ -127,7 +127,7 @@ resource "google_sql_user" "users" {
   count    = var.vpc_count
   name     = var.user_name
   instance = google_sql_database_instance.instance[count.index].name
-  password = "password"
+  password = random_password.password.result
 }
 
 resource "google_service_account" "service_account" {
@@ -176,6 +176,7 @@ resource "google_compute_instance" "my_instance" {
     DB_HOST=${google_sql_database_instance.instance[count.index].private_ip_address}
     DB_NAME=${google_sql_database.database[count.index].name}
     PORT=8080
+    INFRA=prod
     INNER_EOF
 
     # Execute the copy command
@@ -209,3 +210,140 @@ resource "google_dns_record_set" "frontend" {
   depends_on   = [google_compute_instance.my_instance]
 
 }
+
+
+#################### PUB/SUB - TOPIC ####################
+
+resource "google_pubsub_topic" "verify_email" {
+  name = var.pubsub_topic
+
+  labels = {
+    foo = "bar"
+  }
+  message_retention_duration = var.retention_time
+}
+
+resource "google_pubsub_topic_iam_binding" "binding" {
+  project = var.project
+  topic = google_pubsub_topic.verify_email.name
+  role  = var.pubsub_publisher
+  members = [
+    "serviceAccount:${google_service_account.service_account.email}",
+  ]
+}
+
+
+#################### CLOUD FUNCTION ####################
+
+resource "random_id" "bucket_suffix" {
+  byte_length = 8
+}
+resource "google_storage_bucket" "bucket" {
+  name     = "csye-webapp-${random_id.bucket_suffix.hex}"
+  location = var.bucket_location
+}
+
+data "archive_file" "default" {
+  type        = "zip"
+  output_path = var.archive_file_output
+  source_dir  = var.archive_file_input
+}
+
+resource "google_storage_bucket_object" "archive" {
+  name   = var.archive_file_name
+  bucket = google_storage_bucket.bucket.name
+  source = data.archive_file.default.output_path
+}
+
+# resource "google_cloudfunctions_function" "function" {
+#   name        = "function-test"
+#   count        = var.vpc_count
+#   project = var.project
+#   description = "Email Autherization"
+#   runtime     = "nodejs16"
+#   available_memory_mb          = 128
+#   source_archive_bucket        = google_storage_bucket.bucket.name
+#   source_archive_object        = google_storage_bucket_object.archive.name
+#   trigger_http                 = true
+#   timeout                      = 60
+#   entry_point                  = "subscribeMessage"
+#   environment_variables = {
+#     //MY_ENV_VAR = "my-env-var-value",
+#     DB_USERNAME=google_sql_user.users[count.index].name,
+#     DB_PASSWORD=google_sql_user.users[count.index].password,
+#     DB_HOST=google_sql_database_instance.instance[count.index].private_ip_address,
+#     DB_NAME=google_sql_database.database[count.index].name
+#   }
+# }
+
+
+resource "google_cloudfunctions_function" "function" {
+  count        = var.vpc_count
+  name                = var.cloud_function_name
+  description         = "My function triggered by Pub/Sub"
+  runtime             = var.cloud_function_runtime
+  available_memory_mb = var.cloud_function_memory
+  timeout             = var.cloud_function_timeout
+  entry_point         = var.cloud_function_entry_point
+
+  source_archive_bucket = google_storage_bucket.bucket.name
+  source_archive_object = google_storage_bucket_object.archive.name
+
+  event_trigger {
+    event_type = var.cloud_function_event_type
+    resource   = google_pubsub_topic.verify_email.id
+    failure_policy {
+      retry = true
+    }
+  }
+
+  environment_variables = {
+    DB_USERNAME=google_sql_user.users[count.index].name,
+    DB_PASSWORD=google_sql_user.users[count.index].password,
+    DB_HOST=google_sql_database_instance.instance[count.index].private_ip_address,
+    DB_NAME=google_sql_database.database[count.index].name,
+    MAILGUN_API_KEY=var.MAILGUN_API_KEY
+  }
+}
+
+resource "google_cloudfunctions_function_iam_binding" "binding" {
+  count        = var.vpc_count
+  project = google_cloudfunctions_function.function[count.index].project
+  region = google_cloudfunctions_function.function[count.index].region
+  cloud_function = google_cloudfunctions_function.function[count.index].name
+  role = var.cloud_function_role
+  members = [
+    "serviceAccount:${google_service_account.service_account.email}",
+  ]
+}
+
+# #################### PUB/SUB SUBSCRIPTION ####################
+
+# resource "google_pubsub_subscription" "example" {
+#   count        = var.vpc_count
+#   name  = "email-subscription"
+#   topic = google_pubsub_topic.verify_email.id
+
+#   ack_deadline_seconds = 20
+
+#   labels = {
+#     foo = "bar"
+#   }
+
+#   push_config {
+#     push_endpoint = google_cloudfunctions_function.function[count.index].https_trigger_url
+
+#     attributes = {
+#       x-goog-version = "v1"
+#     }
+#   }
+# }
+
+# resource "google_pubsub_subscription_iam_binding" "editor" {
+#   count        = var.vpc_count
+#   subscription = google_pubsub_subscription.example[count.index].name
+#   role         = "roles/pubsub.subscriber"
+#   members = [
+#     "serviceAccount:${google_service_account.service_account.email}",
+#   ]
+# }
