@@ -251,93 +251,111 @@ variable "cloud_platform_scope" {
   default     = "cloud-platform"
 }
 
-variable "MAILGUN_API_KEY"{
+variable "MAILGUN_API_KEY" {
   description = "MailGun Key"
   type        = string
   default     = "da7fe0d397af5ac2359eb405342fc970-309b0ef4-e0e7008f"
 }
 
-variable "pubsub_topic"{
+variable "pubsub_topic" {
   description = "pubsub topic"
   type        = string
   default     = "verify_email"
 }
 
-variable "retention_time"{
+variable "retention_time" {
   description = "retention_time"
   type        = string
   default     = "604800s"
 }
 
-variable "pubsub_publisher"{
+variable "pubsub_publisher" {
   description = "pubsub.publisher"
   type        = string
   default     = "roles/pubsub.publisher"
 }
 
 
-variable "bucket_location"{
+variable "bucket_location" {
   description = "pubsub location"
   type        = string
   default     = "US"
 }
 
-variable "archive_file_output"{
+variable "archive_file_output" {
   description = "archive_file"
   type        = string
   default     = "/tmp/function-source.zip"
 }
 
-variable "archive_file_input"{
+variable "archive_file_input" {
   description = "archive_file"
   type        = string
   default     = "D:/MS-IS/Cloud/Spring-24Assignments/Workspace/nodejs-docs-samples/functions/v2/helloPubSub"
 }
 
-variable "archive_file_name"{
+variable "archive_file_name" {
   description = "archive_file"
   type        = string
   default     = "function-source.zip"
 }
 
-variable "cloud_function_name"{
+variable "cloud_function_name" {
   description = "cloud_function_name"
   type        = string
   default     = "function-email"
 }
 
-variable "cloud_function_runtime"{
+variable "cloud_function_runtime" {
   description = "cloud_function_runtime"
   type        = string
   default     = "nodejs16"
 }
 
-variable "cloud_function_memory"{
+variable "cloud_function_memory" {
   description = "cloud_function_memory"
   type        = number
   default     = 128
 }
 
-variable "cloud_function_timeout"{
+variable "cloud_function_timeout" {
   description = "cloud_function_timeout"
   type        = number
   default     = 60
 }
 
-variable "cloud_function_entry_point"{
+variable "cloud_function_entry_point" {
   description = "cloud_function_entry_point"
   type        = string
   default     = "subscribeMessage"
 }
 
-variable "cloud_function_event_type"{
+variable "cloud_function_event_type" {
   description = "cloud_function_event_type"
   type        = string
   default     = "google.pubsub.topic.publish"
 }
 
-variable "cloud_function_role"{
+variable "cloud_function_role" {
   description = "cloud_function_role"
   type        = string
   default     = "roles/viewer"
+}
+
+variable "connector_name" {
+  description = "Name of the VPC Network Connector in GCP"
+  type        = string
+  default     = "vpc_conn"
+}
+
+variable "vpc_connector_path" {
+  description = "Name of the VPC Network Connector in GCP"
+  type        = string
+  default     = "projects/dev-gcp-414600/locations/us-central1/connectors/connector"
+}
+
+variable "vpc_connector_ip_CIDR" {
+  description = "Name of the VPC Network Connector in GCP"
+  type        = string
+  default     = "10.8.0.0/28"
 }

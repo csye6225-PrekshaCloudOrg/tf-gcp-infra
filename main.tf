@@ -199,7 +199,7 @@ resource "google_compute_instance" "my_instance" {
   depends_on = [google_compute_subnetwork.webapp, google_sql_database_instance.instance, google_service_account.service_account]
 }
 
-
+#################### DNS ####################
 resource "google_dns_record_set" "frontend" {
   count        = var.vpc_count
   name         = var.domain_name
@@ -208,7 +208,6 @@ resource "google_dns_record_set" "frontend" {
   managed_zone = var.managed_zone
   rrdatas      = [google_compute_instance.my_instance[count.index].network_interface[0].access_config[0].nat_ip]
   depends_on   = [google_compute_instance.my_instance]
-
 }
 
 
@@ -225,8 +224,8 @@ resource "google_pubsub_topic" "verify_email" {
 
 resource "google_pubsub_topic_iam_binding" "binding" {
   project = var.project
-  topic = google_pubsub_topic.verify_email.name
-  role  = var.pubsub_publisher
+  topic   = google_pubsub_topic.verify_email.name
+  role    = var.pubsub_publisher
   members = [
     "serviceAccount:${google_service_account.service_account.email}",
   ]
@@ -255,37 +254,22 @@ resource "google_storage_bucket_object" "archive" {
   source = data.archive_file.default.output_path
 }
 
-# resource "google_cloudfunctions_function" "function" {
-#   name        = "function-test"
-#   count        = var.vpc_count
-#   project = var.project
-#   description = "Email Autherization"
-#   runtime     = "nodejs16"
-#   available_memory_mb          = 128
-#   source_archive_bucket        = google_storage_bucket.bucket.name
-#   source_archive_object        = google_storage_bucket_object.archive.name
-#   trigger_http                 = true
-#   timeout                      = 60
-#   entry_point                  = "subscribeMessage"
-#   environment_variables = {
-#     //MY_ENV_VAR = "my-env-var-value",
-#     DB_USERNAME=google_sql_user.users[count.index].name,
-#     DB_PASSWORD=google_sql_user.users[count.index].password,
-#     DB_HOST=google_sql_database_instance.instance[count.index].private_ip_address,
-#     DB_NAME=google_sql_database.database[count.index].name
-#   }
-# }
-
+resource "google_vpc_access_connector" "connector" {
+  count         = var.vpc_count
+  name          = "connector"
+  ip_cidr_range = var.vpc_connector_ip_CIDR
+  network       = google_compute_network.vpcnetwork[count.index].self_link
+}
 
 resource "google_cloudfunctions_function" "function" {
-  count        = var.vpc_count
-  name                = var.cloud_function_name
-  description         = "My function triggered by Pub/Sub"
-  runtime             = var.cloud_function_runtime
-  available_memory_mb = var.cloud_function_memory
-  timeout             = var.cloud_function_timeout
-  entry_point         = var.cloud_function_entry_point
-
+  count                 = var.vpc_count
+  name                  = var.cloud_function_name
+  description           = "My function triggered by Pub/Sub"
+  runtime               = var.cloud_function_runtime
+  available_memory_mb   = var.cloud_function_memory
+  timeout               = var.cloud_function_timeout
+  entry_point           = var.cloud_function_entry_point
+  vpc_connector         = var.vpc_connector_path
   source_archive_bucket = google_storage_bucket.bucket.name
   source_archive_object = google_storage_bucket_object.archive.name
 
@@ -298,52 +282,22 @@ resource "google_cloudfunctions_function" "function" {
   }
 
   environment_variables = {
-    DB_USERNAME=google_sql_user.users[count.index].name,
-    DB_PASSWORD=google_sql_user.users[count.index].password,
-    DB_HOST=google_sql_database_instance.instance[count.index].private_ip_address,
-    DB_NAME=google_sql_database.database[count.index].name,
-    MAILGUN_API_KEY=var.MAILGUN_API_KEY
+    DB_USERNAME     = google_sql_user.users[count.index].name,
+    DB_PASSWORD     = google_sql_user.users[count.index].password,
+    DB_HOST         = google_sql_database_instance.instance[count.index].private_ip_address,
+    DB_NAME         = google_sql_database.database[count.index].name,
+    MAILGUN_API_KEY = var.MAILGUN_API_KEY
   }
+  depends_on = [google_vpc_access_connector.connector]
 }
 
 resource "google_cloudfunctions_function_iam_binding" "binding" {
-  count        = var.vpc_count
-  project = google_cloudfunctions_function.function[count.index].project
-  region = google_cloudfunctions_function.function[count.index].region
+  count          = var.vpc_count
+  project        = google_cloudfunctions_function.function[count.index].project
+  region         = google_cloudfunctions_function.function[count.index].region
   cloud_function = google_cloudfunctions_function.function[count.index].name
-  role = var.cloud_function_role
+  role           = var.cloud_function_role
   members = [
     "serviceAccount:${google_service_account.service_account.email}",
   ]
 }
-
-# #################### PUB/SUB SUBSCRIPTION ####################
-
-# resource "google_pubsub_subscription" "example" {
-#   count        = var.vpc_count
-#   name  = "email-subscription"
-#   topic = google_pubsub_topic.verify_email.id
-
-#   ack_deadline_seconds = 20
-
-#   labels = {
-#     foo = "bar"
-#   }
-
-#   push_config {
-#     push_endpoint = google_cloudfunctions_function.function[count.index].https_trigger_url
-
-#     attributes = {
-#       x-goog-version = "v1"
-#     }
-#   }
-# }
-
-# resource "google_pubsub_subscription_iam_binding" "editor" {
-#   count        = var.vpc_count
-#   subscription = google_pubsub_subscription.example[count.index].name
-#   role         = "roles/pubsub.subscriber"
-#   members = [
-#     "serviceAccount:${google_service_account.service_account.email}",
-#   ]
-# }
