@@ -12,7 +12,7 @@ resource "google_compute_firewall" "allow_web_traffic" {
   count       = var.vpc_count
   name        = "allow-web-traffic-${count.index}"
   network     = google_compute_network.vpcnetwork[count.index].self_link
-  target_tags = ["webapp"]
+
   allow {
     protocol = "icmp"
   }
@@ -40,24 +40,24 @@ resource "google_compute_firewall" "deny_all_traffic" {
   priority = var.deny_priority
 }
 
-resource "google_compute_subnetwork" "webapp" {
-  count         = var.vpc_count
-  name          = var.subnet_webapp_name[count.index]
-  ip_cidr_range = var.subnet_CIDR_webapp[count.index]
-  region        = var.region
-  network       = google_compute_network.vpcnetwork[count.index].id
-}
+# resource "google_compute_subnetwork" "webapp" {
+#   count         = var.vpc_count
+#   name          = var.subnet_webapp_name[count.index]
+#   ip_cidr_range = var.subnet_CIDR_webapp[count.index]
+#   region        = var.region
+#   network       = google_compute_network.vpcnetwork[count.index].id
+# }
 
 
-resource "google_compute_subnetwork" "subnet_db" {
-  count                    = var.vpc_count
-  name                     = var.subnet_db_name[count.index]
-  ip_cidr_range            = var.subnet_CIDR_db[count.index]
-  region                   = var.region
-  network                  = google_compute_network.vpcnetwork[count.index].id
-  private_ip_google_access = true
+# resource "google_compute_subnetwork" "subnet_db" {
+#   count                    = var.vpc_count
+#   name                     = var.subnet_db_name[count.index]
+#   ip_cidr_range            = var.subnet_CIDR_db[count.index]
+#   region                   = var.region
+#   network                  = google_compute_network.vpcnetwork[count.index].id
+#   private_ip_google_access = true
 
-}
+# }
 
 resource "google_compute_global_address" "private_ip_address" {
   count         = var.vpc_count
@@ -82,7 +82,6 @@ resource "google_compute_route" "webapp_route" {
   dest_range       = "0.0.0.0/0"
   next_hop_gateway = "global/gateways/default-internet-gateway"
   priority         = 1000
-  tags             = ["webapp"]
 }
 
 resource "random_id" "db_name_suffix" {
@@ -154,18 +153,27 @@ resource "google_project_iam_binding" "Logging_Admin" {
   ]
 }
 
-
-
-# Define Compute Engine instance
-resource "google_compute_instance" "my_instance" {
-  count        = var.vpc_count
-  name         = var.my_instance_name[count.index]
-  machine_type = var.machine_type
-  zone         = var.zone
-  tags         = ["webapp"]
-  service_account {
-    email  = google_service_account.service_account.email
-    scopes = [var.cloud_platform_scope]
+resource "google_compute_region_instance_template" "vm_template" {
+  count                = var.vpc_count
+  name                 = "webapp-template"
+  description          = "This template is used to create webapp server instances."
+  instance_description = "description assigned to instances"
+  machine_type         = var.machine_type
+  can_ip_forward       = false
+  tags   = ["web-servers"]
+  # scheduling {
+  #   automatic_restart   = true
+  #   on_host_maintenance = "MIGRATE"
+  # }
+  disk {
+    source_image = var.packer_image
+    auto_delete  = true
+    boot         = true
+    disk_size_gb = var.initialize_params_size # Boot disk size in GB
+    disk_type    = var.initialize_params_type
+  }
+  network_interface {
+    subnetwork = google_compute_subnetwork.default[count.index].name
   }
   metadata_startup_script = <<-EOF
     #!/bin/bash
@@ -183,20 +191,181 @@ resource "google_compute_instance" "my_instance" {
     sudo -u csye6225 cp /tmp/.env /tmp/webapp/
   EOF
 
-  boot_disk {
-    initialize_params {
-      image = var.packer_image           # Custom image name
-      size  = var.initialize_params_size # Boot disk size in GB
-      type  = var.initialize_params_type # Boot disk type
+  service_account {
+    email  = google_service_account.service_account.email
+    scopes = ["cloud-platform"]
+  }
+  depends_on = [google_sql_database_instance.instance, google_service_account.service_account]
+
+}
+
+
+#################### Health Check ####################
+resource "google_compute_health_check" "http-health-check" {
+  name        = "http-health-check"
+  description = "Health check via http"
+
+  timeout_sec         = 1
+  check_interval_sec  = 1
+  healthy_threshold   = 4
+  unhealthy_threshold = 4
+
+  http_health_check {
+    port               = 3000
+    port_specification = "USE_FIXED_PORT"
+    # host               = "1.2.3.4"
+    request_path = "/healthz"
+    response     = ""
+  }
+  log_config {
+    enable = true
+  }
+
+}
+
+resource "google_compute_firewall" "health-check" {
+  count  = var.vpc_count
+  name = "fw-allow-health-check"
+   allow {
+    protocol = "tcp"
+    ports    = ["80", "443", "3000"] # Replace with your health check ports
+  }
+  direction     = "INGRESS"
+  network       = google_compute_network.vpcnetwork[count.index].id
+  priority      = 1000
+  source_ranges = ["130.211.0.0/22", "35.191.0.0/16"]
+  target_tags   = ["web-servers"]
+}
+
+#################### Autoscaler ####################
+
+resource "google_compute_region_autoscaler" "autoscaler" {
+  count  = var.vpc_count
+  name   = "my-region-autoscaler"
+  region = "us-central1"
+  target = google_compute_region_instance_group_manager.appserver[count.index].id
+
+  autoscaling_policy {
+    max_replicas    = 5
+    min_replicas    = 1
+    cooldown_period = 60
+
+    cpu_utilization {
+      target = 0.05
     }
   }
+}
 
-  network_interface {
-    subnetwork = google_compute_subnetwork.webapp[count.index].name
-    access_config {}
+# #################### Compute Eng Group manager ####################
+
+resource "google_compute_region_instance_group_manager" "appserver" {
+  name                             = "appserver-igm"
+  count                            = var.vpc_count
+  base_instance_name               = "webapp"
+  region                           = var.region
+  distribution_policy_zones        = ["us-central1-a", "us-central1-f"]
+  # distribution_policy_target_shape = "BALANCED"
+  version {
+    instance_template = google_compute_region_instance_template.vm_template[count.index].self_link
   }
 
-  depends_on = [google_compute_subnetwork.webapp, google_sql_database_instance.instance, google_service_account.service_account]
+  named_port {
+    name = "http"
+    port = 3000
+  }
+
+  auto_healing_policies {
+    health_check      = google_compute_health_check.http-health-check.id
+    initial_delay_sec = 300
+  }
+}
+
+#################### Load Balancer module ####################
+
+# backend subnet
+resource "google_compute_subnetwork" "default" {
+  count         = var.vpc_count
+  name          = "backend-subnet"
+  ip_cidr_range = "10.1.2.0/24"
+  region        = var.region
+  # purpose       = "PRIVATE"
+  network = google_compute_network.vpcnetwork[count.index].id
+  # stack_type    = "IPV4_ONLY"
+  private_ip_google_access = true
+}
+
+# reserved IP address
+resource "google_compute_global_address" "default" {
+  # provider = google-beta
+  name     = "static-address"
+}
+
+# forwarding rule
+resource "google_compute_global_forwarding_rule" "default" {
+  count         = var.vpc_count
+  name                  = "l7-xlb-forwarding-rule"
+  # provider              = google-beta
+  ip_protocol           = "TCP"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  port_range            = "3000"
+  target                = google_compute_target_http_proxy.default[count.index].id
+  ip_address            = google_compute_global_address.default.id
+}
+
+
+# http proxy
+resource "google_compute_target_http_proxy" "default" {
+  count   = var.vpc_count
+  name    = "http-proxy"
+  url_map = google_compute_url_map.default[count.index].id
+}
+
+# url map
+resource "google_compute_url_map" "default" {
+  count           = var.vpc_count
+  name            = "url-map-regional"
+  default_service = google_compute_backend_service.default[count.index].id
+}
+
+# resource "google_compute_managed_ssl_certificate" "lb_default" {
+#   name     = "myservice-ssl-cert"
+
+#   managed {
+#     domains = ["preksha.me"]
+#   }
+# }
+
+
+# resource "google_compute_target_https_proxy" "lb_default" {
+#   name     = "myservice-https-proxy"
+#   count   = var.vpc_count
+#   url_map  = google_compute_url_map.default[count.index].id
+#   ssl_certificates = [
+#     google_compute_managed_ssl_certificate.lb_default.name
+#   ]
+#   depends_on = [
+#     google_compute_managed_ssl_certificate.lb_default
+#   ]
+# }
+
+# backend service with custom request and response headers
+resource "google_compute_backend_service" "default" {
+  count                 = var.vpc_count
+  name                  = "backend-service"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  locality_lb_policy    = "ROUND_ROBIN"
+  health_checks         = [google_compute_health_check.http-health-check.id]
+  protocol              = "HTTP"
+  session_affinity      = "NONE"
+  timeout_sec           = 30
+  backend {
+    group           = google_compute_region_instance_group_manager.appserver[count.index].instance_group
+    balancing_mode  = "UTILIZATION"
+    capacity_scaler = 1.0
+  }
+   log_config {
+    enable = true
+  }
 }
 
 #################### DNS ####################
@@ -206,8 +375,8 @@ resource "google_dns_record_set" "frontend" {
   type         = var.dns_type
   ttl          = var.dns_ttl
   managed_zone = var.managed_zone
-  rrdatas      = [google_compute_instance.my_instance[count.index].network_interface[0].access_config[0].nat_ip]
-  depends_on   = [google_compute_instance.my_instance]
+  rrdatas      = [google_compute_global_address.default.address]
+  depends_on   = [google_compute_backend_service.default]
 }
 
 
@@ -254,9 +423,9 @@ resource "google_storage_bucket_object" "archive" {
   source = data.archive_file.default.output_path
 }
 
-resource "google_vpc_access_connector" "connector" {
+resource "google_vpc_access_connector" "connector2" {
   count         = var.vpc_count
-  name          = "connector"
+  name          = "connector2"
   ip_cidr_range = var.vpc_connector_ip_CIDR
   network       = google_compute_network.vpcnetwork[count.index].self_link
 }
@@ -269,7 +438,7 @@ resource "google_cloudfunctions_function" "function" {
   available_memory_mb   = var.cloud_function_memory
   timeout               = var.cloud_function_timeout
   entry_point           = var.cloud_function_entry_point
-  vpc_connector         = var.vpc_connector_path
+  vpc_connector         = "projects/dev-gcp-414600/locations/us-central1/connectors/connector2"
   source_archive_bucket = google_storage_bucket.bucket.name
   source_archive_object = google_storage_bucket_object.archive.name
 
@@ -288,7 +457,7 @@ resource "google_cloudfunctions_function" "function" {
     DB_NAME         = google_sql_database.database[count.index].name,
     MAILGUN_API_KEY = var.MAILGUN_API_KEY
   }
-  depends_on = [google_vpc_access_connector.connector]
+  depends_on = [google_vpc_access_connector.connector2]
 }
 
 resource "google_cloudfunctions_function_iam_binding" "binding" {
@@ -301,3 +470,4 @@ resource "google_cloudfunctions_function_iam_binding" "binding" {
     "serviceAccount:${google_service_account.service_account.email}",
   ]
 }
+
