@@ -9,9 +9,9 @@ resource "google_compute_network" "vpcnetwork" {
 }
 
 resource "google_compute_firewall" "allow_web_traffic" {
-  count       = var.vpc_count
-  name        = "allow-web-traffic-${count.index}"
-  network     = google_compute_network.vpcnetwork[count.index].self_link
+  count   = var.vpc_count
+  name    = "allow-web-traffic-${count.index}"
+  network = google_compute_network.vpcnetwork[count.index].self_link
 
   allow {
     protocol = "icmp"
@@ -129,6 +129,13 @@ resource "google_sql_user" "users" {
   password = random_password.password.result
 }
 
+resource "google_compute_managed_ssl_certificate" "lb_default" {
+  name = "myservice-ssl-cert"
+  managed {
+    domains = ["preksha.me"]
+  }
+}
+
 resource "google_service_account" "service_account" {
   account_id   = "csye-preksha"
   display_name = "csye-preksha"
@@ -160,7 +167,7 @@ resource "google_compute_region_instance_template" "vm_template" {
   instance_description = "description assigned to instances"
   machine_type         = var.machine_type
   can_ip_forward       = false
-  tags   = ["web-servers"]
+  tags                 = ["web-servers"]
   # scheduling {
   #   automatic_restart   = true
   #   on_host_maintenance = "MIGRATE"
@@ -205,16 +212,16 @@ resource "google_compute_health_check" "http-health-check" {
   name        = "http-health-check"
   description = "Health check via http"
 
-  timeout_sec         = 1
-  check_interval_sec  = 1
-  healthy_threshold   = 4
-  unhealthy_threshold = 4
+  timeout_sec         = var.health_check_timeout_sec
+  check_interval_sec  = var.health_check_check_interval_sec
+  healthy_threshold   = var.health_check_healthy_threshold
+  unhealthy_threshold = var.health_check_unhealthy_threshold
 
   http_health_check {
-    port               = 3000
+    port               = var.http_health_check_port
     port_specification = "USE_FIXED_PORT"
     # host               = "1.2.3.4"
-    request_path = "/healthz"
+    request_path = var.request_path
     response     = ""
   }
   log_config {
@@ -224,16 +231,16 @@ resource "google_compute_health_check" "http-health-check" {
 }
 
 resource "google_compute_firewall" "health-check" {
-  count  = var.vpc_count
-  name = "fw-allow-health-check"
-   allow {
+  count = var.vpc_count
+  name  = "fw-allow-health-check"
+  allow {
     protocol = "tcp"
-    ports    = ["80", "443", "3000"] # Replace with your health check ports
+    ports    = var.allowed_ports
   }
   direction     = "INGRESS"
   network       = google_compute_network.vpcnetwork[count.index].id
   priority      = 1000
-  source_ranges = ["130.211.0.0/22", "35.191.0.0/16"]
+  source_ranges = var.source_ranges
   target_tags   = ["web-servers"]
 }
 
@@ -246,9 +253,9 @@ resource "google_compute_region_autoscaler" "autoscaler" {
   target = google_compute_region_instance_group_manager.appserver[count.index].id
 
   autoscaling_policy {
-    max_replicas    = 5
-    min_replicas    = 1
-    cooldown_period = 60
+    max_replicas    = var.max_replicas
+    min_replicas    = var.min_replicas
+    cooldown_period = var.cooldown_period
 
     cpu_utilization {
       target = 0.05
@@ -259,19 +266,18 @@ resource "google_compute_region_autoscaler" "autoscaler" {
 # #################### Compute Eng Group manager ####################
 
 resource "google_compute_region_instance_group_manager" "appserver" {
-  name                             = "appserver-igm"
-  count                            = var.vpc_count
-  base_instance_name               = "webapp"
-  region                           = var.region
-  distribution_policy_zones        = ["us-central1-a", "us-central1-f"]
-  # distribution_policy_target_shape = "BALANCED"
+  name                      = "appserver-igm"
+  count                     = var.vpc_count
+  base_instance_name        = "webapp"
+  region                    = var.region
+  distribution_policy_zones = var.distribution_policy_zones
   version {
     instance_template = google_compute_region_instance_template.vm_template[count.index].self_link
   }
 
   named_port {
-    name = "http"
-    port = 3000
+    name = var.group_manager_name
+    port = var.group_manager_port
   }
 
   auto_healing_policies {
@@ -286,7 +292,7 @@ resource "google_compute_region_instance_group_manager" "appserver" {
 resource "google_compute_subnetwork" "default" {
   count         = var.vpc_count
   name          = "backend-subnet"
-  ip_cidr_range = "10.1.2.0/24"
+  ip_cidr_range = var.backend_subnet_ip_cidr
   region        = var.region
   # purpose       = "PRIVATE"
   network = google_compute_network.vpcnetwork[count.index].id
@@ -297,27 +303,33 @@ resource "google_compute_subnetwork" "default" {
 # reserved IP address
 resource "google_compute_global_address" "default" {
   # provider = google-beta
-  name     = "static-address"
+  name = "static-address"
 }
 
 # forwarding rule
 resource "google_compute_global_forwarding_rule" "default" {
-  count         = var.vpc_count
+  count                 = var.vpc_count
   name                  = "l7-xlb-forwarding-rule"
-  # provider              = google-beta
-  ip_protocol           = "TCP"
-  load_balancing_scheme = "EXTERNAL_MANAGED"
-  port_range            = "3000"
-  target                = google_compute_target_http_proxy.default[count.index].id
+  ip_protocol           = var.ip_protocol
+  load_balancing_scheme = var.load_balancing_scheme
+  port_range            = var.forwarding_rule_port_range
+  target                = google_compute_target_https_proxy.lb_default[count.index].id
   ip_address            = google_compute_global_address.default.id
 }
 
 
 # http proxy
-resource "google_compute_target_http_proxy" "default" {
-  count   = var.vpc_count
-  name    = "http-proxy"
+resource "google_compute_target_https_proxy" "lb_default" {
+  count = var.vpc_count
+  # provider = google-beta
+  name    = "myservice-https-proxy"
   url_map = google_compute_url_map.default[count.index].id
+  ssl_certificates = [
+    google_compute_managed_ssl_certificate.lb_default.name
+  ]
+  depends_on = [
+    google_compute_managed_ssl_certificate.lb_default
+  ]
 }
 
 # url map
@@ -327,43 +339,22 @@ resource "google_compute_url_map" "default" {
   default_service = google_compute_backend_service.default[count.index].id
 }
 
-# resource "google_compute_managed_ssl_certificate" "lb_default" {
-#   name     = "myservice-ssl-cert"
-
-#   managed {
-#     domains = ["preksha.me"]
-#   }
-# }
-
-
-# resource "google_compute_target_https_proxy" "lb_default" {
-#   name     = "myservice-https-proxy"
-#   count   = var.vpc_count
-#   url_map  = google_compute_url_map.default[count.index].id
-#   ssl_certificates = [
-#     google_compute_managed_ssl_certificate.lb_default.name
-#   ]
-#   depends_on = [
-#     google_compute_managed_ssl_certificate.lb_default
-#   ]
-# }
-
 # backend service with custom request and response headers
 resource "google_compute_backend_service" "default" {
   count                 = var.vpc_count
   name                  = "backend-service"
-  load_balancing_scheme = "EXTERNAL_MANAGED"
-  locality_lb_policy    = "ROUND_ROBIN"
+  load_balancing_scheme = var.load_balancing_scheme
+  locality_lb_policy    = var.locality_lb_policy
   health_checks         = [google_compute_health_check.http-health-check.id]
-  protocol              = "HTTP"
-  session_affinity      = "NONE"
-  timeout_sec           = 30
+  protocol              = var.backend_service_protocol
+  session_affinity      = var.session_affinity
+  timeout_sec           = var.timeout_sec
   backend {
     group           = google_compute_region_instance_group_manager.appserver[count.index].instance_group
-    balancing_mode  = "UTILIZATION"
+    balancing_mode  = var.balancing_mode
     capacity_scaler = 1.0
   }
-   log_config {
+  log_config {
     enable = true
   }
 }

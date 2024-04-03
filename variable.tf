@@ -101,7 +101,7 @@ variable "initialize_params_size" {
 variable "allowed_ports" {
   description = "List of allowed ports"
   type        = list(string)
-  default     = ["80", "3000"]
+  default     = ["80", "443", "3000"]
 }
 
 variable "deny_priority" {
@@ -358,4 +358,142 @@ variable "vpc_connector_ip_CIDR" {
   description = "Name of the VPC Network Connector in GCP"
   type        = string
   default     = "10.8.0.0/28"
+}
+
+variable "load_balancing_scheme" {
+  description = "load_balancing_scheme"
+  type        = string
+  default     = "EXTERNAL_MANAGED"
+}
+
+variable "locality_lb_policy" {
+  description = "locality_lb_policy"
+  type        = string
+  default     = "ROUND_ROBIN"
+}
+
+variable "backend_service_protocol" {
+  description = "backend_service_protocol"
+  type        = string
+  default     = "HTTP"
+}
+
+variable "timeout_sec" {
+  description = "timeout_sec"
+  type        = number
+  default     = 30
+}
+
+variable "balancing_mode" {
+  description = "balancing_mode"
+  type        = string
+  default     = "UTILIZATION"
+}
+
+variable "session_affinity" {
+  description = "session_affinity"
+  type        = string
+  default     = "NONE"
+}
+
+variable "forwarding_rule_port_range" {
+  description = "forwarding_rule_port_range"
+  type        = string
+  default     = "443"
+}
+
+variable "ip_protocol" {
+  description = "ip_protocol"
+  type        = string
+  default     = "TCP"
+}
+
+variable "backend_subnet_ip_cidr" {
+  description = "backend-subnet-ip-cidr"
+  type        = string
+  default     = "10.1.2.0/24"
+}
+
+variable "group_manager_name" {
+  description = "group_manager_name"
+  type        = string
+  default     = "http"
+}
+
+variable "group_manager_port" {
+  description = "group_manager_port"
+  type        = number
+  default     = 3000
+}
+
+variable "distribution_policy_zones" {
+  type        = list(string)
+  default     = ["us-central1-a", "us-central1-f"]
+  description = "distribution_policy_zones"
+}
+
+variable "max_replicas" {
+  description = "max_replicas"
+  type        = number
+  default     = 9
+}
+
+variable "min_replicas" {
+  description = "min_replicas"
+  type        = number
+  default     = 3
+}
+
+variable "cooldown_period" {
+  description = "cooldown_period"
+  type        = number
+  default     = 60
+}
+
+variable "cpu_utilization_target" {
+  description = "cpu_utilization_target"
+  type        = number
+  default     = 0.05
+}
+
+variable "source_ranges" {
+  type        = list(string)
+  default     = ["130.211.0.0/22", "35.191.0.0/16"]
+  description = "source_ranges"
+}
+
+variable "health_check_timeout_sec" {
+  description = "health_check_timeout_sec"
+  type        = number
+  default     = 1
+}
+variable "health_check_check_interval_sec" {
+  description = "health_check_interval_sec"
+  type        = number
+  default     = 1
+}
+
+variable "health_check_healthy_threshold" {
+  description = "health_check_healthy_threshold"
+  type        = number
+  default     = 4
+}
+
+variable "health_check_unhealthy_threshold" {
+  description = "health_check_healthy_threshold"
+  type        = number
+  default     = 4
+}
+
+
+variable "http_health_check_port" {
+  description = "group_manager_port"
+  type        = number
+  default     = 3000
+}
+
+variable "request_path" {
+  description = "/healthz"
+  type        = string
+  default     = "/healthz"
 }
