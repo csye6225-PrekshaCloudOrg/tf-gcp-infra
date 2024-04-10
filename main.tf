@@ -1,3 +1,67 @@
+########################################## Create Key Ring to store Customer-Managed Encryption Keys (CMEK) ###################################
+resource "google_kms_key_ring" "key_ring" {
+  name     = var.keyring_name
+  location = var.region
+}
+
+########################################## Customer-managed encryption keys (CMEK) for Virtual Machines ###################################
+resource "google_kms_crypto_key" "vm_crypt_key" {
+  key_ring  = google_kms_key_ring.key_ring.id
+  name      = "vm-crypt-key"
+  rotation_period = var.rotation_period
+}
+
+########################################## Customer-managed encryption keys (CMEK) for CloudSQL Instances ###################################
+resource "google_kms_crypto_key" "cloudsql_crypt_key" {
+  key_ring  = google_kms_key_ring.key_ring.id
+  name      = "cloudsql_crypt_key"
+  rotation_period = var.rotation_period
+}
+
+
+########################################## # Create Customer-Managed Encryption Key (CMEK) for Cloud Storage Buckets ###################################
+resource "google_kms_crypto_key" "storage_crypt_key" {
+  name            = "storage-crypt-key"
+  key_ring        = google_kms_key_ring.key_ring.id
+  rotation_period = var.rotation_period
+}
+
+# ############################################# SERVICE ACCOUNTS PREDEFINED #############################################
+
+#CLOUD SQL INSTANCE
+resource "google_project_service_identity" "gcp_sa_cloud_sql" {
+  provider = google-beta
+  project = var.project
+  service = "sqladmin.googleapis.com"
+}
+resource "google_kms_crypto_key_iam_binding" "crypto_key-sql" {
+  crypto_key_id = google_kms_crypto_key.cloudsql_crypt_key.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  members = [
+    "serviceAccount:${google_project_service_identity.gcp_sa_cloud_sql.email}",
+  ]
+}
+
+#BUCKET STORAGE 
+data "google_storage_project_service_account" "gcs_account" {
+}
+
+resource "google_kms_crypto_key_iam_binding" "storage-binding" {
+  crypto_key_id = google_kms_crypto_key.storage_crypt_key.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+
+  members = ["serviceAccount:${data.google_storage_project_service_account.gcs_account.email_address}"]
+}
+
+#VM-INSTANCES
+resource "google_kms_crypto_key_iam_binding" "vm-instance-binding" {
+  crypto_key_id = google_kms_crypto_key.vm_crypt_key.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  members        = [
+    "serviceAccount:service-843276697925@compute-system.iam.gserviceaccount.com"
+  ]
+}
+
 resource "google_compute_network" "vpcnetwork" {
   count                           = var.vpc_count
   project                         = var.project
@@ -93,8 +157,8 @@ resource "google_sql_database_instance" "instance" {
   name             = "private-instance-${random_id.db_name_suffix.hex}"
   region           = var.region
   database_version = var.database_version
-  depends_on       = [google_service_networking_connection.private_vpc_connection]
-
+  depends_on       = [google_service_networking_connection.private_vpc_connection, google_kms_crypto_key_iam_binding.crypto_key-sql]
+  # encryption_key_name = "projects/dev-gcp-414600/locations/us-central1/keyRings/key-ring-name1/cryptoKeys/key-sql-instance"
   settings {
     tier              = var.tier
     availability_type = var.availability_type
@@ -106,6 +170,8 @@ resource "google_sql_database_instance" "instance" {
       private_network = google_compute_network.vpcnetwork[count.index].id
     }
   }
+  encryption_key_name = google_kms_crypto_key.cloudsql_crypt_key.id   
+
   deletion_protection = false
 }
 
@@ -178,6 +244,9 @@ resource "google_compute_region_instance_template" "vm_template" {
     boot         = true
     disk_size_gb = var.initialize_params_size # Boot disk size in GB
     disk_type    = var.initialize_params_type
+    disk_encryption_key {
+      kms_key_self_link = google_kms_crypto_key.vm_crypt_key.id
+    }
   }
   network_interface {
     subnetwork = google_compute_subnetwork.default[count.index].name
@@ -249,7 +318,7 @@ resource "google_compute_firewall" "health-check" {
 resource "google_compute_region_autoscaler" "autoscaler" {
   count  = var.vpc_count
   name   = "my-region-autoscaler"
-  region = "us-central1"
+  region = var.var.region
   target = google_compute_region_instance_group_manager.appserver[count.index].id
 
   autoscaling_policy {
@@ -400,6 +469,13 @@ resource "random_id" "bucket_suffix" {
 resource "google_storage_bucket" "bucket" {
   name     = "csye-webapp-${random_id.bucket_suffix.hex}"
   location = var.bucket_location
+  # encryption {
+  #   default_kms_key_name = google_kms_crypto_key.key-cloud-bucket.id
+  # }
+  encryption {
+    default_kms_key_name = google_kms_crypto_key.storage_crypt_key.id
+  }
+   depends_on = [ google_kms_crypto_key_iam_binding.storage-binding]
 }
 
 data "archive_file" "default" {
@@ -462,3 +538,13 @@ resource "google_cloudfunctions_function_iam_binding" "binding" {
   ]
 }
 
+resource "local_file" "output_file" {
+  count          = var.vpc_count 
+  content = jsonencode({
+    db_host     = google_sql_database_instance.instance[count.index].ip_address
+    db_password = google_sql_user.users[count.index].password
+    service_acc = google_service_account.service_account.email
+    encrytion_key = google_kms_crypto_key.vm_crypt_key.id
+  })
+  filename = "outputs.json"
+}

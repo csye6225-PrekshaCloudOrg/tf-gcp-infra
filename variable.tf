@@ -279,7 +279,7 @@ variable "pubsub_publisher" {
 variable "bucket_location" {
   description = "pubsub location"
   type        = string
-  default     = "US"
+  default     = "us-central1"
 }
 
 variable "archive_file_output" {
@@ -435,13 +435,13 @@ variable "distribution_policy_zones" {
 variable "max_replicas" {
   description = "max_replicas"
   type        = number
-  default     = 9
+  default     = 2
 }
 
 variable "min_replicas" {
   description = "min_replicas"
   type        = number
-  default     = 3
+  default     = 1
 }
 
 variable "cooldown_period" {
@@ -496,4 +496,34 @@ variable "request_path" {
   description = "/healthz"
   type        = string
   default     = "/healthz"
+}
+
+variable "key_name" {
+  description = "Name of the KMS key"
+  type = string
+  default = "key-vm"
+}
+
+variable "keyring_name" {
+  description = "Name of the KMS Keyring"
+  type = string
+  default = "key-ring-name1-v5"
+}
+
+variable "algorithm" {
+  description = "Algorithm for the KMS key"
+  type = string
+  default = "GOOGLE_SYMMETRIC_ENCRYPTION"
+}
+
+variable "rotation_period" {
+  description = "Time in seconds to rotate key"
+  type = string
+  default = "2592000s"
+}
+
+variable "google_kms_key_ring" {
+  description = "google_kms_key_ring"
+  type = string
+  default = "my-key-ring-v2"
 }
