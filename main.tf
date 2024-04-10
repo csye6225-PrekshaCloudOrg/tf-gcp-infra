@@ -318,7 +318,7 @@ resource "google_compute_firewall" "health-check" {
 resource "google_compute_region_autoscaler" "autoscaler" {
   count  = var.vpc_count
   name   = "my-region-autoscaler"
-  region = var.var.region
+  region = var.region
   target = google_compute_region_instance_group_manager.appserver[count.index].id
 
   autoscaling_policy {
